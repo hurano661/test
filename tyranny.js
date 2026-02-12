@@ -53,24 +53,28 @@ client.on('messageCreate', async message => {
     switch (command) {
         case 'help':
             const helpMessage = `
-------------------
-|tyranny selfbot|
-------------------
->r 
->rs - stops reacting
->ar 
->ar1  
->sar - stops ar
->sar1 - stops ar1
->outlast 
->soutlast - stops outlast 
->odelay - outlast delay/s
->av
->purge
->ping
->hush
->stream
->ss - stops stream`;
+       -----------------
+       |tyranny selfbot|
+       -----------------
+- reactions
+           >r 
+            >rs - stops reacting
+- autoreply
+           >ar 
+            >sar - stops ar 
+           >ar1 
+            >sar1 - stops ar1
+- chatpacking
+        >outlast 
+         >soutlast - stops outlast 
+          >odelay - outlast delay/s
+- misc
+    >av
+    >purge
+    >ping
+    >hush
+    >stream
+     >ss - stops stream`;
             await message.channel.send('```\n' + helpMessage + '\n```');
             break;
 
