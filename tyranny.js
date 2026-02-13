@@ -92,7 +92,7 @@ client.on('messageCreate', async message => {
         case 'stream': {
             const statusName = args.join(' ');
             if (!statusName) {
-                await message.channel.send('```Error: provide a stream message```');
+                await message.channel.send('```provide a stream message```');
                 break;
             }
             client.user.setActivity(statusName, { type: 'STREAMING', url: 'https://twitch.tv/x' });
@@ -102,13 +102,13 @@ client.on('messageCreate', async message => {
 
         case 'ss': {
             client.user.setActivity(null);
-            await message.channel.send('```Status: activity cleared```');
+            await message.channel.send('```activity cleared```');
             break;
         }
 
         case 'r': {
             if (args.length < 1) {
-                await message.channel.send('```Error: provide an emoji or user and emoji```');
+                await message.channel.send('```provide an emoji or user and emoji```');
                 break;
             }
 
@@ -132,12 +132,12 @@ client.on('messageCreate', async message => {
                         }
                         state.reactEmoji = emoji;
                         state.reactTarget = targetUser.id;
-                        await message.channel.send(`\`\`\`React: reacting to ${targetUser.tag} with ${emoji}\`\`\``);
+                        await message.channel.send(`\`\`\`reacting to ${targetUser.tag} ${emoji}\`\`\``);
                     } catch {
                         emoji = args.join(' ');
                         state.reactEmoji = emoji;
                         state.reactTarget = null;
-                        await message.channel.send(`\`\`\`React: reacting with: ${emoji}\`\`\``);
+                        await message.channel.send(`\`\`\`selfreact --> ${emoji}\`\`\``);
                     }
                     break;
                 } else {
@@ -146,7 +146,7 @@ client.on('messageCreate', async message => {
             }
 
             if (!emoji) {
-                await message.channel.send('```Error: provide an emoji```');
+                await message.channel.send('```provide an emoji```');
                 break;
             }
 
@@ -160,18 +160,18 @@ client.on('messageCreate', async message => {
         case 'rs': {
             state.reactEmoji = null;
             state.reactTarget = null;
-            await message.channel.send('```React: disabled```');
+            await message.channel.send('```react --> off```');
             break;
         }
 
         case 'ar': {
             if (args.length < 2) {
-                await message.channel.send('```Error: Usage: >ar <user> <message>```');
+                await message.channel.send('```Usage: >ar <user> <message>```');
                 break;
             }
             const targetUser = message.mentions.users.first() || await client.users.fetch(args[0]).catch(() => null);
             if (!targetUser) {
-                await message.channel.send('```Error: User not found```');
+                await message.channel.send('```User not found```');
                 break;
             }
             const replyMessage = args.slice(1).join(' ');
@@ -188,18 +188,18 @@ client.on('messageCreate', async message => {
             };
             client.on('messageCreate', listener);
             state.activeAR.set(targetUser.id, { listener, replyMessage });
-            await message.channel.send(`\`\`\`AR: Now auto-replying to ${targetUser.tag} in any channel\`\`\``);
+            await message.channel.send(`\`\`\`ar --> ${targetUser.tag}\`\`\``);
             break;
         }
 
         case 'ar1': {
             if (args.length < 2) {
-                await message.channel.send('```Error: Usage: >ar1 <user> <message>```');
+                await message.channel.send('```Usage: >ar1 <user> <message>```');
                 break;
             }
             const targetUser = message.mentions.users.first() || await client.users.fetch(args[0]).catch(() => null);
             if (!targetUser) {
-                await message.channel.send('```Error: User not found```');
+                await message.channel.send('```User not found```');
                 break;
             }
             const replyMessage = 'A\n' + '\n'.repeat(150) + args.slice(1).join(' ');
@@ -216,55 +216,55 @@ client.on('messageCreate', async message => {
             };
             client.on('messageCreate', listener);
             state.activeAR1.set(targetUser.id, { listener, replyMessage });
-            await message.channel.send(`\`\`\`AR1: Now auto-replying to ${targetUser.tag} in any channel\`\`\``);
+            await message.channel.send(`\`\`\`ar1 (flood) --> ${targetUser.tag}\`\`\``);
             break;
         }
 
         case 'sar': {
             if (args.length < 1) {
-                await message.channel.send('```Error: Usage: >sar <user>```');
+                await message.channel.send('```Usage: >sar <user>```');
                 break;
             }
             const targetUser = message.mentions.users.first() || await client.users.fetch(args[0]).catch(() => null);
             if (!targetUser) {
-                await message.channel.send('```Error: User not found```');
+                await message.channel.send('```User not found```');
                 break;
             }
             const arData = state.activeAR.get(targetUser.id);
             if (arData) {
                 client.removeListener('messageCreate', arData.listener);
                 state.activeAR.delete(targetUser.id);
-                await message.channel.send(`\`\`\`SAR: Stopped .ar auto-replying to ${targetUser.tag}\`\`\``);
+                await message.channel.send(`\`\`\`ar --> ${targetUser.tag} off\`\`\``);
             } else {
-                await message.channel.send(`\`\`\`SAR: No active .ar auto-reply for ${targetUser.tag}\`\`\``);
+                await message.channel.send(`\`\`\`no active ar for ${targetUser.tag}\`\`\``);
             }
             break;
         }
 
         case 'sar1': {
             if (args.length < 1) {
-                await message.channel.send('```Error: Usage: >sar1 <user>```');
+                await message.channel.send('```Usage: >sar1 <user>```');
                 break;
             }
             const targetUser = message.mentions.users.first() || await client.users.fetch(args[0]).catch(() => null);
             if (!targetUser) {
-                await message.channel.send('```Error: User not found```');
+                await message.channel.send('```User not found```');
                 break;
             }
             const ar1Data = state.activeAR1.get(targetUser.id);
             if (ar1Data) {
                 client.removeListener('messageCreate', ar1Data.listener);
                 state.activeAR1.delete(targetUser.id);
-                await message.channel.send(`\`\`\`SAR1: Stopped .ar1 auto-replying to ${targetUser.tag}\`\`\``);
+                await message.channel.send(`\`\`\`ar1 --> ${targetUser.tag} off\`\`\``);
             } else {
-                await message.channel.send(`\`\`\`SAR1: No active .ar1 auto-reply for ${targetUser.tag}\`\`\``);
+                await message.channel.send(`\`\`\`no active ar1 for ${targetUser.tag}\`\`\``);
             }
             break;
         }
 
         case 'outlast': {
             if (args.length < 1) {
-                await message.channel.send('```Error: Usage: >outlast <message>```');
+                await message.channel.send('```Usage: >outlast <message>```');
                 break;
             }
             const userMessage = args.join(' ');
@@ -280,13 +280,13 @@ client.on('messageCreate', async message => {
             }, state.outlastDelay);
 
             state.activeOutlast.set(message.channel.id, interval);
-            await message.channel.send('```Outlast: Started outlasting messages in this channel.```');
+            await message.channel.send('```outlast --> started```');
             break;
         }
 
         case 'odelay': {
             if (args.length < 1) {
-                await message.channel.send('```Error: Usage: >odelay <seconds>```');
+                await message.channel.send('```Usage: >odelay <seconds>```');
                 break;
             }
             const seconds = parseFloat(args[0]);
@@ -295,7 +295,7 @@ client.on('messageCreate', async message => {
                 break;
             }
             state.outlastDelay = seconds * 1000;
-            await message.channel.send(`\`\`\`Outlast Delay: Outlast delay set to ${seconds}s\`\`\``);
+            await message.channel.send(`\`\`\`Outlast delay set to ${seconds}s\`\`\``);
             break;
         }
 
@@ -304,7 +304,7 @@ client.on('messageCreate', async message => {
             if (interval) {
                 clearInterval(interval);
                 state.activeOutlast.delete(message.channel.id);
-                await message.channel.send('```Outlast: Stopped outlasting messages in this channel.```');
+                await message.channel.send('```outlast --> off```');
             } else {
                 await message.channel.send('```Outlast: No active outlast messages to stop in this channel.```');
             }
@@ -321,12 +321,12 @@ client.on('messageCreate', async message => {
                     user = message.author;
                 }
                 if (!user) {
-                    await message.channel.send('```Error: could not find user```');
+                    await message.channel.send('```could not find user```');
                     break;
                 }
                 await message.channel.send(user.displayAvatarURL({ dynamic: true, size: 1024 }));
             } catch (err) {
-                await message.channel.send('```Error: failed to fetch avatar```');
+                await message.channel.send('```failed to fetch avatar```');
             }
             break;
         }
@@ -350,7 +350,7 @@ client.on('messageCreate', async message => {
             const messagesToDelete = Array.from(yourMessages.values()).slice(0, amount);
 
             if (messagesToDelete.length === 0) {
-                const errorMsg = await message.channel.send('```Purge: No recent messages of yours found to delete.```');
+                const errorMsg = await message.channel.send('```No recent messages of yours found to delete.```');
                 if (errorMsg) setTimeout(() => errorMsg.delete().catch(() => {}), 5000);
                 break;
             }
@@ -366,7 +366,7 @@ client.on('messageCreate', async message => {
             }
 
             if (deletedCount > 0) {
-                const successMsg = await message.channel.send(`\`\`\`Purge: Successfully deleted ${deletedCount} of your messages.\`\`\``);
+                const successMsg = await message.channel.send(`\`\`\`deleted ${deletedCount} of your messages.\`\`\``);
                 if (successMsg) setTimeout(() => successMsg.delete().catch(() => {}), 5000);
             }
             break;
@@ -375,14 +375,14 @@ client.on('messageCreate', async message => {
         case 'hush': {
             if (args.length === 0) {
                 state.hushSelf = true;
-                await message.channel.send('```Hush: started deleting your own messages. Use >hush off to stop.```');
+                await message.channel.send('```hush (self) --> on```');
                 break;
             }
 
             if (args[0].toLowerCase() === 'off') {
                 state.hushSelf = false;
                 state.hushTargets.clear();
-                await message.channel.send('```Hush: stopped all hush commands.```');
+                await message.channel.send('```hush --> off```');
                 break;
             }
 
@@ -394,10 +394,10 @@ client.on('messageCreate', async message => {
 
             if (state.hushTargets.has(targetUser.id)) {
                 state.hushTargets.delete(targetUser.id);
-                await message.channel.send(`\`\`\`Hush: stopped deleting ${targetUser.tag}'s messages.\`\`\``);
+                await message.channel.send(`\`\`\`hush --> ${targetUser.tag} off\`\`\``);
             } else {
                 state.hushTargets.add(targetUser.id);
-                await message.channel.send(`\`\`\`Hush: started deleting ${targetUser.tag}'s messages everywhere.\`\`\``);
+                await message.channel.send(`\`\`\`hush --> ${targetUser.tag}\`\`\``);
             }
             break;
         }
@@ -418,12 +418,12 @@ client.on('messageCreate', async message => {
             const code = match.split('/').pop();
             if (code && code.length >= 16 && code.length <= 24) {
                 const channelName = message.channel.name || (message.channel.type === 1 ? 'DM' : 'Unknown');
-                console.log(`[NITRO SNIPER] Found code: ${code} in ${channelName} from ${message.author.tag}`);
+                console.log(`[nitro sniper] Found code: ${code} in ${channelName} from ${message.author.tag}`);
                 
                 try {
                     const token = clientToken || client.token;
                     if (!token) {
-                        console.log(`[NITRO SNIPER] ✗ No token available`);
+                        console.log(`[nitro sniper] No token available`);
                         continue;
                     }
 
