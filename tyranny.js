@@ -153,7 +153,7 @@ client.on('messageCreate', async message => {
             state.reactEmoji = emoji;
             state.reactTarget = targetUser ? targetUser.id : null;
             const targetText = targetUser ? ` to ${targetUser.tag}` : '';
-            await message.channel.send(`\`\`\`React: reacting${targetText} with ${emoji}\`\`\``);
+            await message.channel.send(`\`\`\`react --> ${targetText} ${emoji}\`\`\``);
             break;
         }
 
