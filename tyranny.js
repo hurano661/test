@@ -16,6 +16,8 @@ const startTime = new Date();
 client.state = {
     reactEmoji: null,
     reactTarget: null,
+    superReactEmoji: null,
+    superReactTarget: null,
     activeAR: new Map(),
     activeAR1: new Map(),
     activeOutlast: new Map(),
@@ -31,6 +33,9 @@ client.on('ready', () => {
 client.on('messageCreate', async message => {
     if (message.author.id === client.user.id && client.state.reactEmoji && !client.state.reactTarget) {
         message.react(client.state.reactEmoji).catch(() => {});
+    }
+    if (message.author.id === client.user.id && client.state.superReactEmoji && !client.state.superReactTarget) {
+        message.react(client.state.superReactEmoji).catch(() => {});
     }
 
     if (message.author.id === client.user.id && client.state.hushSelf && !message.content.startsWith(PREFIX)) {
@@ -132,12 +137,12 @@ client.on('messageCreate', async message => {
                         }
                         state.reactEmoji = emoji;
                         state.reactTarget = targetUser.id;
-                        await message.channel.send(`\`\`\`reacting to ${targetUser.tag} ${emoji}\`\`\``);
+                        await message.channel.send(`\`\`\`super-reacting to ${targetUser.tag} ${emoji}\`\`\``);
                     } catch {
                         emoji = args.join(' ');
                         state.reactEmoji = emoji;
                         state.reactTarget = null;
-                        await message.channel.send(`\`\`\`selfreact --> ${emoji}\`\`\``);
+                        await message.channel.send(`\`\`\`selfreact (super) --> ${emoji}\`\`\``);
                     }
                     break;
                 } else {
@@ -160,7 +165,57 @@ client.on('messageCreate', async message => {
         case 'rs': {
             state.reactEmoji = null;
             state.reactTarget = null;
-            await message.channel.send('```react --> off```');
+            await message.channel.send('```sr --> off```');
+            break;
+        }
+
+        case 'sr': {
+            if (args.length < 1) {
+                break;
+            }
+
+            let targetUser = null;
+            let emoji = null;
+
+            const mention = message.mentions.users.first();
+            if (mention) {
+                targetUser = mention;
+                emoji = args.slice(1).join(' ');
+            } else {
+                const potentialUser = args[0];
+                if (potentialUser && potentialUser.match(/^\d{17,19}$/)) {
+                    try {
+                        const user = await client.users.fetch(potentialUser);
+                        targetUser = user;
+                        emoji = args.slice(1).join(' ');
+                        if (!emoji) {
+                            break;
+                        }
+                        state.superReactEmoji = emoji;
+                        state.superReactTarget = targetUser.id;
+                    } catch {
+                        emoji = args.join(' ');
+                        state.superReactEmoji = emoji;
+                        state.superReactTarget = null;
+                    }
+                    break;
+                } else {
+                    emoji = args.join(' ');
+                }
+            }
+
+            if (!emoji) {
+                break;
+            }
+
+            state.superReactEmoji = emoji;
+            state.superReactTarget = targetUser ? targetUser.id : null;
+            break;
+        }
+
+        case 'nsr': {
+            state.superReactEmoji = null;
+            state.superReactTarget = null;
             break;
         }
 
