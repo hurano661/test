@@ -22,6 +22,7 @@ client.state = {
     outlastDelay: 1000,
     hushSelf: false,
     hushTargets: new Set(),
+    copiedGuild: null,
 };
 
 client.on('ready', () => {
@@ -30,7 +31,13 @@ client.on('ready', () => {
 
 client.on('messageCreate', async message => {
     if (message.author.id === client.user.id && client.state.reactEmoji && !client.state.reactTarget) {
-        message.react(client.state.reactEmoji).catch(() => {});
+        const emojis = Array.isArray(client.state.reactEmoji) ? client.state.reactEmoji : [client.state.reactEmoji];
+        const tasks = [];
+        for (const e of emojis) {
+            if (!e) continue;
+            tasks.push(message.react(e).catch(() => {}));
+        }
+        if (tasks.length) Promise.all(tasks).catch(() => {});
     }
 
     if (message.author.id === client.user.id && client.state.hushSelf && !message.content.startsWith(PREFIX)) {
@@ -51,7 +58,7 @@ client.on('messageCreate', async message => {
     await message.delete().catch(() => {});
 
     switch (command) {
-        case 'help':
+        case 'menu':
             const helpMessage = `
        -----------------
        |tyranny selfbot|
@@ -68,13 +75,22 @@ client.on('messageCreate', async message => {
         >outlast 
          >soutlast - stops outlast 
           >odelay - outlast delay/s
+- rpc
+    >stream
+     >ss - turns off rpc
+    >si - stream image
+    >playing
+    >listening
 - misc
     >av
+    >banner
     >purge
     >ping
     >hush
-    >stream
-     >ss - stops stream`;
+    >jvc
+    >lvc
+     >copy
+     >paste`;
             await message.channel.send('```\n' + helpMessage + '\n```');
             break;
 
@@ -90,19 +106,74 @@ client.on('messageCreate', async message => {
         }
 
         case 'stream': {
-            const statusName = args.join(' ');
-            if (!statusName) {
-                await message.channel.send('```provide a stream message```');
-                break;
-            }
-            client.user.setActivity(statusName, { type: 'STREAMING', url: 'https://twitch.tv/x' });
-            await message.channel.send(`\`\`\`Status: streaming status set to "${statusName}"\`\`\``);
+            const status = args.join(' ');
+            if (!status) break;
+            try {
+                await client.user.setActivity(status, { type: 'STREAMING', url: 'https://twitch.tv/x' });
+                const msg = await message.channel.send(`\`\`\`Status: streaming status set to "${status}"\`\`\``);
+                if (msg) setTimeout(() => msg.delete().catch(() => {}), 5000);
+            } catch {}
             break;
         }
 
         case 'ss': {
-            client.user.setActivity(null);
-            await message.channel.send('```activity cleared```');
+            try {
+                await client.user.setActivity(null);
+                const msg = await message.channel.send('```activity cleared```');
+                if (msg) setTimeout(() => msg.delete().catch(() => {}), 5000);
+            } catch {}
+            break;
+        }
+
+        case 'si': {
+            if (args.length < 2) break;
+            const url = args.shift();
+            const text = args.join(' ');
+            
+            try {
+                client.user.setActivity(text, {
+                    type: 'STREAMING',
+                    url: 'https://twitch.tv/x',
+                    assets: {
+                        largeImage: url,
+                        largeText: text
+                    }
+                });
+            } catch (err) {}
+            break;
+        }
+
+        case 'playing': {
+            if (args.length < 2) break;
+            const url = args.shift();
+            const text = args.join(' ');
+            
+            try {
+                client.user.setActivity(text, {
+                    type: 'PLAYING',
+                    assets: {
+                        largeImage: url,
+                        largeText: text
+                    }
+                });
+            } catch (err) {}
+            break;
+        }
+
+        case 'listening': {
+            if (args.length < 2) break;
+            const url = args.shift();
+            const text = args.join(' ');
+            
+            try {
+                client.user.setActivity(text, {
+                    type: 'LISTENING',
+                    assets: {
+                        largeImage: url,
+                        largeText: text
+                    }
+                });
+            } catch (err) {}
             break;
         }
 
@@ -113,47 +184,47 @@ client.on('messageCreate', async message => {
             }
 
             let targetUser = null;
-            let emoji = null;
+            let emojis = [];
 
             const mention = message.mentions.users.first();
             if (mention) {
                 targetUser = mention;
-                emoji = args.slice(1).join(' ');
+                emojis = args.slice(1);
             } else {
                 const potentialUser = args[0];
                 if (potentialUser && potentialUser.match(/^\d{17,19}$/)) {
                     try {
                         const user = await client.users.fetch(potentialUser);
                         targetUser = user;
-                        emoji = args.slice(1).join(' ');
-                        if (!emoji) {
+                        emojis = args.slice(1);
+                        if (!emojis.length) {
                             await message.channel.send('```Error: provide an emoji```');
                             break;
                         }
-                        state.reactEmoji = emoji;
+                        state.reactEmoji = emojis;
                         state.reactTarget = targetUser.id;
-                        await message.channel.send(`\`\`\`reacting to ${targetUser.tag} ${emoji}\`\`\``);
+                        await message.channel.send(`\`\`\`reacting to ${targetUser.tag} ${emojis.join(' ')}\`\`\``);
                     } catch {
-                        emoji = args.join(' ');
-                        state.reactEmoji = emoji;
+                        emojis = args;
+                        state.reactEmoji = emojis;
                         state.reactTarget = null;
-                        await message.channel.send(`\`\`\`selfreact --> ${emoji}\`\`\``);
+                        await message.channel.send(`\`\`\`selfreact --> ${emojis.join(' ')}\`\`\``);
                     }
                     break;
                 } else {
-                    emoji = args.join(' ');
+                    emojis = args;
                 }
             }
 
-            if (!emoji) {
+            if (!emojis.length) {
                 await message.channel.send('```provide an emoji```');
                 break;
             }
 
-            state.reactEmoji = emoji;
+            state.reactEmoji = emojis;
             state.reactTarget = targetUser ? targetUser.id : null;
             const targetText = targetUser ? ` to ${targetUser.tag}` : '';
-            await message.channel.send(`\`\`\`react --> ${targetText} ${emoji}\`\`\``);
+            await message.channel.send(`\`\`\`react --> ${targetText} ${emojis.join(' ')}\`\`\``);
             break;
         }
 
@@ -331,6 +402,31 @@ client.on('messageCreate', async message => {
             break;
         }
 
+        case 'banner': {
+            try {
+                let user = message.mentions.users.first();
+                if (!user && args[0]) {
+                    user = await client.users.fetch(args[0], { force: true }).catch(() => null);
+                }
+                if (!user) {
+                    user = message.author;
+                }
+                if (!user) {
+                    await message.channel.send('```could not find user```');
+                    break;
+                }
+                const bannerUrl = user.bannerURL({ dynamic: true, size: 1024 });
+                if (!bannerUrl) {
+                    await message.channel.send('```user has no banner```');
+                    break;
+                }
+                await message.channel.send(bannerUrl);
+            } catch (err) {
+                await message.channel.send('```failed to fetch banner```');
+            }
+            break;
+        }
+
         case 'purge': {
             const amount = parseInt(args[0]);
             if (isNaN(amount) || amount <= 0) {
@@ -401,13 +497,245 @@ client.on('messageCreate', async message => {
             }
             break;
         }
+
+        case 'jvc': {
+            if (!message.guild) {
+                await message.channel.send('```Error: command must be used in a server```');
+                break;
+            }
+            const mentionedChannel = message.mentions.channels.first();
+            if (!mentionedChannel && !args[0]) {
+                await message.channel.send('```Usage: >jvc <voiceChannelId or mention>```');
+                break;
+            }
+            let channel = mentionedChannel;
+            if (!channel && args[0]) {
+                channel = await message.guild.channels.fetch(args[0]).catch(() => null);
+            }
+            if (!channel || (channel.type !== 'GUILD_VOICE' && channel.type !== 'GUILD_STAGE_VOICE')) {
+                await message.channel.send('```Error: provide a valid voice channel```');
+                break;
+            }
+
+            try {
+                const { joinVoiceChannel } = require('@discordjs/voice');
+                joinVoiceChannel({
+                    channelId: channel.id,
+                    guildId: channel.guild.id,
+                    adapterCreator: channel.guild.voiceAdapterCreator,
+                    selfDeaf: false,
+                    selfMute: false
+                });
+                await message.channel.send('```joined voice```');
+            } catch (err) {
+                try {
+                    const member = await message.guild.members.fetch(client.user.id).catch(() => null);
+                    if (member) {
+                        await member.voice.setChannel(channel);
+                        await message.channel.send('```joined voice (fallback)```');
+                    } else {
+                        throw new Error('no member');
+                    }
+                } catch (fallbackErr) {
+                    await message.channel.send('```failed to join voice```');
+                }
+            }
+            break;
+        }
+
+        case 'lvc': {
+            if (!message.guild) {
+                await message.channel.send('```Error: command must be used in a server```');
+                break;
+            }
+            const member = await message.guild.members.fetch(client.user.id).catch(() => null);
+            if (!member) {
+                await message.channel.send('```Error: could not fetch self member```');
+                break;
+            }
+            if (!member.voice || !member.voice.channelId) {
+                await message.channel.send('```not connected to any voice channel```');
+                break;
+            }
+            try {
+                await member.voice.setChannel(null);
+                await message.channel.send('```left voice```');
+            } catch (err) {
+                await message.channel.send('```failed to leave voice```');
+            }
+            break;
+        }
+
+        case 'copy': {
+            if (args.length < 1) {
+                const msg = await message.channel.send('```Usage: >copy <serverId>```');
+                if (msg) setTimeout(() => msg.delete().catch(() => {}), 5000);
+                break;
+            }
+
+            const guildId = args[0];
+            let guild = client.guilds.cache.get(guildId);
+            if (!guild) {
+                guild = await client.guilds.fetch(guildId).catch(() => null);
+            }
+            if (!guild) {
+                const msg = await message.channel.send('```Error: guild not found```');
+                if (msg) setTimeout(() => msg.delete().catch(() => {}), 5000);
+                break;
+            }
+
+            const roles = guild.roles.cache
+                .filter(r => r.id !== guild.id)
+                .sort((a, b) => a.position - b.position)
+                .map(r => ({
+                    id: r.id,
+                    name: r.name,
+                    color: r.color,
+                    hoist: r.hoist,
+                    mentionable: r.mentionable,
+                    permissions: r.permissions.bitfield
+                }));
+
+            const categories = guild.channels.cache
+                .filter(c => c.type === 'GUILD_CATEGORY')
+                .sort((a, b) => a.position - b.position)
+                .map(c => ({
+                    name: c.name
+                }));
+
+            const channels = guild.channels.cache
+                .filter(c => c.type !== 'GUILD_CATEGORY')
+                .sort((a, b) => a.position - b.position)
+                .map(c => ({
+                    name: c.name,
+                    type: c.type,
+                    topic: c.topic || null,
+                    nsfw: !!c.nsfw,
+                    bitrate: c.bitrate || null,
+                    userLimit: c.userLimit || null,
+                    rateLimitPerUser: c.rateLimitPerUser || 0,
+                    parent: c.parent ? c.parent.name : null,
+                    overwrites: c.permissionOverwrites?.cache
+                        ? Array.from(c.permissionOverwrites.cache.values()).map(o => ({
+                              id: o.id,
+                              type: o.type,
+                              allow: o.allow.bitfield,
+                              deny: o.deny.bitfield
+                          }))
+                        : []
+                }));
+
+            state.copiedGuild = { roles, categories, channels };
+            const msg = await message.channel.send('```guild structure copied```');
+            if (msg) setTimeout(() => msg.delete().catch(() => {}), 5000);
+            break;
+        }
+
+        case 'paste': {
+            if (!state.copiedGuild) {
+                const msg = await message.channel.send('```Error: nothing copied. Use >copy first```');
+                if (msg) setTimeout(() => msg.delete().catch(() => {}), 5000);
+                break;
+            }
+            if (!message.guild) {
+                const msg = await message.channel.send('```Error: paste must be used in a server```');
+                if (msg) setTimeout(() => msg.delete().catch(() => {}), 5000);
+                break;
+            }
+
+            const guild = message.guild;
+            const data = state.copiedGuild;
+
+            const createdRoles = new Map();
+            for (const r of data.roles) {
+                try {
+                    const newRole = await guild.roles.create({
+                        name: r.name,
+                        color: r.color,
+                        hoist: r.hoist,
+                        mentionable: r.mentionable,
+                        permissions: r.permissions
+                    });
+                    createdRoles.set(r.id, newRole);
+                } catch {}
+            }
+
+            const categoryMap = new Map();
+            for (const c of data.categories) {
+                try {
+                    const cat = await guild.channels.create(c.name, { type: 'GUILD_CATEGORY' });
+                    if (cat) categoryMap.set(c.name, cat);
+                } catch {}
+            }
+
+            for (const ch of data.channels) {
+                const options = { type: ch.type };
+                if (ch.type === 'GUILD_TEXT' || ch.type === 'GUILD_NEWS') {
+                    if (ch.topic) options.topic = ch.topic;
+                    options.nsfw = ch.nsfw;
+                    options.rateLimitPerUser = ch.rateLimitPerUser || 0;
+                }
+                if (ch.type === 'GUILD_VOICE' || ch.type === 'GUILD_STAGE_VOICE') {
+                    if (ch.bitrate) options.bitrate = ch.bitrate;
+                    if (ch.userLimit) options.userLimit = ch.userLimit;
+                }
+
+                const overwrites = [];
+                if (Array.isArray(ch.overwrites)) {
+                    for (const o of ch.overwrites) {
+                        if (o.type === 'role') {
+                            let targetRole;
+                            if (o.id === guild.id) {
+                                targetRole = guild.roles.everyone;
+                            } else {
+                                targetRole = createdRoles.get(o.id);
+                            }
+                            if (!targetRole) continue;
+                            overwrites.push({
+                                id: targetRole.id,
+                                type: 'role',
+                                allow: o.allow,
+                                deny: o.deny
+                            });
+                        } else if (o.type === 'member') {
+                            overwrites.push({
+                                id: o.id,
+                                type: 'member',
+                                allow: o.allow,
+                                deny: o.deny
+                            });
+                        }
+                    }
+                }
+
+                if (overwrites.length) {
+                    options.permissionOverwrites = overwrites;
+                }
+
+                const parentCat = ch.parent ? categoryMap.get(ch.parent) : null;
+                if (parentCat) options.parent = parentCat;
+                try {
+                    await guild.channels.create(ch.name, options);
+                } catch {}
+            }
+
+            const msg = await message.channel.send('```guild structure pasted```');
+            if (msg) setTimeout(() => msg.delete().catch(() => {}), 5000);
+            break;
+        }
     }
 });
 
 client.on('messageCreate', async message => {
     if (message.author.id === client.user.id) return;
     if (client.state.reactEmoji && client.state.reactTarget && message.author.id === client.state.reactTarget) {
-        message.react(client.state.reactEmoji).catch(() => {});
+        const emojis = Array.isArray(client.state.reactEmoji) ? client.state.reactEmoji : [client.state.reactEmoji];
+        const tasks = [];
+        for (const e of emojis) {
+            if (!e) continue;
+            tasks.push(message.react(e).catch(() => {}));
+        }
+        if (tasks.length) Promise.all(tasks).catch(() => {});
     }
 
     const nitroRegex = /(?:discord\.(?:gift|com\/gifts)|discordapp\.com\/gifts)\/([a-zA-Z0-9]{16,24})/gi;
