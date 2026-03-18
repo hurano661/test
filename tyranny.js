@@ -13,9 +13,59 @@ const client = new Client({ checkUpdate: false });
 const PREFIX = '>';
 const startTime = new Date();
 
+const reactionQueue = [];
+let processingReactions = false;
+let globalRetryUntil = 0;
+const RATE_LIMIT_SAFETY_MS = 25;
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+const processReactionQueue = async () => {
+    if (processingReactions) return;
+    processingReactions = true;
+
+    while (reactionQueue.length) {
+        const now = Date.now();
+        if (now < globalRetryUntil) {
+            await sleep(globalRetryUntil - now);
+            continue;
+        }
+
+        const { message, encodedEmoji, resolve, reject } = reactionQueue.shift();
+        try {
+            await client.api
+                .channels(message.channelId || message.channel.id)
+                .messages(message.id)
+                .reactions(encodedEmoji)('@me')
+                .put();
+            resolve();
+        } catch (error) {
+            if (error.status === 429) {
+                const retryAfter = (error.data?.retry_after ?? 1.5) * 1000;
+                globalRetryUntil = Date.now() + retryAfter + RATE_LIMIT_SAFETY_MS;
+                reactionQueue.unshift({ message, encodedEmoji, resolve, reject });
+            } else if (![403, 404].includes(error.status)) {
+                reject(error);
+            } else {
+                resolve();
+            }
+        }
+    }
+
+    processingReactions = false;
+};
+
+const handleReaction = (message, encodedEmoji) => {
+    return new Promise((resolve, reject) => {
+        reactionQueue.push({ message, encodedEmoji, resolve, reject });
+        processReactionQueue();
+    });
+};
+
 client.state = {
     reactEmoji: null,
     reactTarget: null,
+    rotateReacts: new Map(),
     activeAR: new Map(),
     activeAR1: new Map(),
     activeOutlast: new Map(),
@@ -30,14 +80,21 @@ client.on('ready', () => {
 });
 
 client.on('messageCreate', async message => {
-    if (message.author.id === client.user.id && client.state.reactEmoji && !client.state.reactTarget) {
-        const emojis = Array.isArray(client.state.reactEmoji) ? client.state.reactEmoji : [client.state.reactEmoji];
-        const tasks = [];
-        for (const e of emojis) {
-            if (!e) continue;
-            tasks.push(message.react(e).catch(() => {}));
+    if (message.author.id === client.user.id) {
+        if (client.state.reactEmoji && !client.state.reactTarget) {
+            const emojis = Array.isArray(client.state.reactEmoji) ? client.state.reactEmoji : [client.state.reactEmoji];
+            for (const e of emojis) {
+                if (!e) continue;
+                handleReaction(message, e);
+            }
         }
-        if (tasks.length) Promise.all(tasks).catch(() => {});
+
+        const rotateDataSelf = client.state.rotateReacts.get('self');
+        if (rotateDataSelf && Array.isArray(rotateDataSelf.emojis) && rotateDataSelf.emojis.length) {
+            const emoji = rotateDataSelf.emojis[rotateDataSelf.index % rotateDataSelf.emojis.length];
+            rotateDataSelf.index = (rotateDataSelf.index + 1) % rotateDataSelf.emojis.length;
+            if (emoji) handleReaction(message, emoji);
+        }
     }
 
     if (message.author.id === client.user.id && client.state.hushSelf && !message.content.startsWith(PREFIX)) {
@@ -60,9 +117,9 @@ client.on('messageCreate', async message => {
     switch (command) {
         case 'menu':
             const helpMessage = `
-       -----------------
-       |tyranny selfbot|
-       -----------------
+       ---------------
+       |      envy    |
+       ---------------
 - reactions
            >r 
             >rs - stops reacting
@@ -87,8 +144,6 @@ client.on('messageCreate', async message => {
     >purge
     >ping
     >hush
-    >jvc
-    >lvc
      >copy
      >paste`;
             await message.channel.send('```\n' + helpMessage + '\n```');
@@ -101,7 +156,7 @@ client.on('messageCreate', async message => {
             const minutes = Math.floor((uptime % 3600000) / 60000);
             const seconds = Math.floor((uptime % 60000) / 1000);
             const uptimeString = `${days}d ${hours}h ${minutes}m ${seconds}s`;
-            await message.channel.send(`\`\`\`Ping: ${client.ws.ping.toFixed(2)}ms\nUptime: ${uptimeString}\`\`\``);
+            await message.channel.send(`\`\`\`ping: ${client.ws.ping.toFixed(2)}ms\nUptime: ${uptimeString}\`\`\``);
             break;
         }
 
@@ -184,56 +239,111 @@ client.on('messageCreate', async message => {
             }
 
             let targetUser = null;
-            let emojis = [];
+            let rawEmojis = [];
 
             const mention = message.mentions.users.first();
             if (mention) {
                 targetUser = mention;
-                emojis = args.slice(1);
+                rawEmojis = args.slice(1);
             } else {
                 const potentialUser = args[0];
                 if (potentialUser && potentialUser.match(/^\d{17,19}$/)) {
                     try {
                         const user = await client.users.fetch(potentialUser);
                         targetUser = user;
-                        emojis = args.slice(1);
-                        if (!emojis.length) {
-                            await message.channel.send('```Error: provide an emoji```');
-                            break;
-                        }
-                        state.reactEmoji = emojis;
-                        state.reactTarget = targetUser.id;
-                        await message.channel.send(`\`\`\`reacting to ${targetUser.tag} ${emojis.join(' ')}\`\`\``);
+                        rawEmojis = args.slice(1);
                     } catch {
-                        emojis = args;
-                        state.reactEmoji = emojis;
-                        state.reactTarget = null;
-                        await message.channel.send(`\`\`\`selfreact --> ${emojis.join(' ')}\`\`\``);
+                        rawEmojis = args;
                     }
-                    break;
                 } else {
-                    emojis = args;
+                    rawEmojis = args;
                 }
             }
 
-            if (!emojis.length) {
+            if (!rawEmojis.length) {
                 await message.channel.send('```provide an emoji```');
                 break;
             }
 
-            state.reactEmoji = emojis;
+            const processedEmojis = rawEmojis.map(e => {
+                let emojiIdentifier = e.trim();
+                const customEmojiMatch = emojiIdentifier.match(/<a?:(.+:\d+)>/);
+                if (customEmojiMatch) {
+                    emojiIdentifier = customEmojiMatch[1];
+                }
+                return encodeURIComponent(emojiIdentifier);
+            });
+
+            state.reactEmoji = processedEmojis;
             state.reactTarget = targetUser ? targetUser.id : null;
+            if (!targetUser) {
+                state.rotateReacts.delete('self');
+            } else {
+                state.rotateReacts.delete(targetUser.id);
+            }
             const targetText = targetUser ? ` to ${targetUser.tag}` : '';
-            await message.channel.send(`\`\`\`react --> ${targetText} ${emojis.join(' ')}\`\`\``);
+            await message.channel.send(`\`\`\`react --> ${targetText} ${rawEmojis.join(' ')}\`\`\``);
             break;
         }
 
         case 'rs': {
             state.reactEmoji = null;
             state.reactTarget = null;
+            state.rotateReacts.clear();
             await message.channel.send('```react --> off```');
             break;
         }
+
+        case 'rr': {
+            if (args.length < 2) {
+                await message.channel.send('```Usage: >rr <user or id or nothing for self> <emoji1> [emoji2] [emoji3]...```');
+                break;
+            }
+
+            let targetUser = null;
+            let rawEmojis = [];
+
+            const mention = message.mentions.users.first();
+            if (mention) {
+                targetUser = mention;
+                rawEmojis = args.slice(1);
+            } else {
+                const potentialUser = args[0];
+                if (potentialUser && potentialUser.match(/^\d{17,19}$/)) {
+                    try {
+                        const user = await client.users.fetch(potentialUser);
+                        targetUser = user;
+                        rawEmojis = args.slice(1);
+                    } catch {
+                        rawEmojis = args;
+                    }
+                } else {
+                    targetUser = null;
+                    rawEmojis = args;
+                }
+            }
+
+            if (!rawEmojis.length) {
+                await message.channel.send('```provide at least one emoji```');
+                break;
+            }
+
+            const processedEmojis = rawEmojis.map(e => {
+                let emojiIdentifier = e.trim();
+                const customEmojiMatch = emojiIdentifier.match(/<a?:(.+:\d+)>/);
+                if (customEmojiMatch) {
+                    emojiIdentifier = customEmojiMatch[1];
+                }
+                return encodeURIComponent(emojiIdentifier);
+            });
+
+            const key = targetUser ? targetUser.id : 'self';
+            state.rotateReacts.set(key, { emojis: processedEmojis, index: 0 });
+            const targetText = targetUser ? ` to ${targetUser.tag}` : 'to self';
+            await message.channel.send(`\`\`\`rr --> ${targetText} ${rawEmojis.join(' ')}\`\`\``);
+            break;
+        }
+
 
         case 'ar': {
             if (args.length < 2) {
@@ -404,17 +514,32 @@ client.on('messageCreate', async message => {
 
         case 'banner': {
             try {
-                let user = message.mentions.users.first();
-                if (!user && args[0]) {
-                    user = await client.users.fetch(args[0], { force: true }).catch(() => null);
+                let targetId = null;
+                const mentioned = message.mentions.users.first();
+                if (mentioned) {
+                    targetId = mentioned.id;
+                } else if (args[0]) {
+                    const raw = String(args[0]).trim();
+                    const match = raw.match(/^<@!?(\d{17,19})>$/) || raw.match(/^(\d{17,19})$/);
+                    if (match) targetId = match[1];
                 }
-                if (!user) {
-                    user = message.author;
+                if (!targetId) targetId = client.user.id;
+
+                let user =
+                    (await client.users.fetch(targetId, { force: true }).catch(() => null)) ||
+                    client.users.cache.get(targetId) ||
+                    null;
+
+                if (!user && message.guild) {
+                    const member = await message.guild.members.fetch(targetId).catch(() => null);
+                    if (member?.user) user = member.user;
                 }
+
                 if (!user) {
                     await message.channel.send('```could not find user```');
                     break;
                 }
+
                 const bannerUrl = user.bannerURL({ dynamic: true, size: 1024 });
                 if (!bannerUrl) {
                     await message.channel.send('```user has no banner```');
@@ -494,74 +619,6 @@ client.on('messageCreate', async message => {
             } else {
                 state.hushTargets.add(targetUser.id);
                 await message.channel.send(`\`\`\`hush --> ${targetUser.tag}\`\`\``);
-            }
-            break;
-        }
-
-        case 'jvc': {
-            if (!message.guild) {
-                await message.channel.send('```Error: command must be used in a server```');
-                break;
-            }
-            const mentionedChannel = message.mentions.channels.first();
-            if (!mentionedChannel && !args[0]) {
-                await message.channel.send('```Usage: >jvc <voiceChannelId or mention>```');
-                break;
-            }
-            let channel = mentionedChannel;
-            if (!channel && args[0]) {
-                channel = await message.guild.channels.fetch(args[0]).catch(() => null);
-            }
-            if (!channel || (channel.type !== 'GUILD_VOICE' && channel.type !== 'GUILD_STAGE_VOICE')) {
-                await message.channel.send('```Error: provide a valid voice channel```');
-                break;
-            }
-
-            try {
-                const { joinVoiceChannel } = require('@discordjs/voice');
-                joinVoiceChannel({
-                    channelId: channel.id,
-                    guildId: channel.guild.id,
-                    adapterCreator: channel.guild.voiceAdapterCreator,
-                    selfDeaf: false,
-                    selfMute: false
-                });
-                await message.channel.send('```joined voice```');
-            } catch (err) {
-                try {
-                    const member = await message.guild.members.fetch(client.user.id).catch(() => null);
-                    if (member) {
-                        await member.voice.setChannel(channel);
-                        await message.channel.send('```joined voice (fallback)```');
-                    } else {
-                        throw new Error('no member');
-                    }
-                } catch (fallbackErr) {
-                    await message.channel.send('```failed to join voice```');
-                }
-            }
-            break;
-        }
-
-        case 'lvc': {
-            if (!message.guild) {
-                await message.channel.send('```Error: command must be used in a server```');
-                break;
-            }
-            const member = await message.guild.members.fetch(client.user.id).catch(() => null);
-            if (!member) {
-                await message.channel.send('```Error: could not fetch self member```');
-                break;
-            }
-            if (!member.voice || !member.voice.channelId) {
-                await message.channel.send('```not connected to any voice channel```');
-                break;
-            }
-            try {
-                await member.voice.setChannel(null);
-                await message.channel.send('```left voice```');
-            } catch (err) {
-                await message.channel.send('```failed to leave voice```');
             }
             break;
         }
@@ -723,6 +780,7 @@ client.on('messageCreate', async message => {
             if (msg) setTimeout(() => msg.delete().catch(() => {}), 5000);
             break;
         }
+
     }
 });
 
@@ -730,12 +788,17 @@ client.on('messageCreate', async message => {
     if (message.author.id === client.user.id) return;
     if (client.state.reactEmoji && client.state.reactTarget && message.author.id === client.state.reactTarget) {
         const emojis = Array.isArray(client.state.reactEmoji) ? client.state.reactEmoji : [client.state.reactEmoji];
-        const tasks = [];
         for (const e of emojis) {
             if (!e) continue;
-            tasks.push(message.react(e).catch(() => {}));
+            handleReaction(message, e);
         }
-        if (tasks.length) Promise.all(tasks).catch(() => {});
+    }
+
+    const rotateData = client.state.rotateReacts.get(message.author.id);
+    if (rotateData && Array.isArray(rotateData.emojis) && rotateData.emojis.length) {
+        const emoji = rotateData.emojis[rotateData.index % rotateData.emojis.length];
+        rotateData.index = (rotateData.index + 1) % rotateData.emojis.length;
+        if (emoji) handleReaction(message, emoji);
     }
 
     const nitroRegex = /(?:discord\.(?:gift|com\/gifts)|discordapp\.com\/gifts)\/([a-zA-Z0-9]{16,24})/gi;
